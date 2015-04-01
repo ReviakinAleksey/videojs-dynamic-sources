@@ -214,7 +214,12 @@
                     playFunction.call(currentPlayer);
                 }
             };
+            if (currentPlayer.autoplay()){
+                currentPlayer.play();
+            }
         }
+
+
 
         var sourceListMenu = new SourceListMenu(currentPlayer, choiceStorage);
         sourceListMenu.on(currentPlayer, 'dynamicSourcesUpdated', sourceListMenu.update);
