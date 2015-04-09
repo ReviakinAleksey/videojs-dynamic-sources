@@ -172,28 +172,72 @@
             }
         }
 
-        //[{sourceName: '1080p', sourceValue: '123'}
+        /*
+         player.setSources([
+         {
+             'HD': [
+                 {type: "video/mp4", src: "http://www.example.com/path/to/hd_video.mp4"},
+                 {type: "video/webm", src: "http://www.example.com/path/to/hd_video.webm"},
+                 {type: "video/ogg", src: "http://www.example.com/path/to/hd_video.ogv"}
+                ],
+              selected: true
+          },
+         {
+             'SD': [
+                 {type: "video/mp4", src: "http://www.example.com/path/to/sd_video.mp4"},
+                 {type: "video/webm", src: "http://www.example.com/path/to/sd_video.webm"},
+                 {type: "video/ogg", src: "http://www.example.com/path/to/sd_video.ogv"}
+             ]
+         },
+         {
+            'REGULAR' : 'http://www.example.com/path/to/fallback_video.ogv'
+         }
+         ]);
+
+         */
         currentPlayer.setSources = function (src) {
-            if (src.length > 0) {
+            var i, sourceObject, sourceLabel, sourceDescriptor;
+            var internalSources = [];
+            if (Array.isArray(src)) {
                 var preferedSourceName = choiceStorage.get();
                 var selectedSourceFound = false;
-                for(var i = src.length - 1; i >= 0; i--) {
-                    if (preferedSourceName == null) {
-                        if (selectedSourceFound) {
-                            src[i].selected = false;
+
+                for(i = 0; i < src.length; i++) {
+                    sourceObject = src[i];
+                    sourceLabel = undefined;
+                    for(var key in sourceObject) {
+                        if (Object.prototype.hasOwnProperty.call(sourceObject, key) && key !== 'selected') {
+                            sourceLabel = key;
+                            break;
                         }
-                    } else {
-                        src[i].selected = src[i].sourceName === preferedSourceName;
                     }
-                    if (src[i].selected === true) {
-                        selectedSourceFound = true;
+                    if (sourceLabel !== undefined) {
+                        sourceDescriptor = {
+                            sourceName: sourceLabel,
+                            sourceValue: sourceObject[key],
+                            selected: sourceObject.selected
+                        };
+
+                        if (preferedSourceName == null) {
+                            if (selectedSourceFound) {
+                                sourceDescriptor.selected = false;
+                            }
+                        } else {
+                            sourceDescriptor.selected = sourceDescriptor.sourceName === preferedSourceName;
+                        }
+                        if (sourceDescriptor.selected === true) {
+                            selectedSourceFound = true;
+                        }
+                        internalSources.push(sourceDescriptor);
                     }
                 }
-                if (selectedSourceFound === false) {
-                    src[0].selected = true;
+                if (selectedSourceFound === false && internalSources.length > 0) {
+                    internalSources[0].selected = true;
                 }
+            } else {
+                currentPlayer.src(src);
             }
-            currentPlayer.options_.dynamicSources = src;
+            currentPlayer.options_.dynamicSources = internalSources;
             currentPlayer.trigger('dynamicSourcesUpdated');
         };
 
@@ -202,24 +246,17 @@
             currentPlayer.play = function () {
                 if (!currentPlayer.src()) {
                     options.sourceProvider(function (src) {
-                        if (Array.isArray(src)) {
-                            currentPlayer.setSources(src);
-                        } else {
-                            currentPlayer.setSources([]);
-                            currentPlayer.src(src);
-                        }
+                        currentPlayer.setSources(src);
                         playFunction.call(currentPlayer);
                     });
                 } else {
                     playFunction.call(currentPlayer);
                 }
             };
-            if (currentPlayer.autoplay()){
+            if (currentPlayer.autoplay()) {
                 currentPlayer.play();
             }
         }
-
-
 
         var sourceListMenu = new SourceListMenu(currentPlayer, choiceStorage);
         sourceListMenu.on(currentPlayer, 'dynamicSourcesUpdated', sourceListMenu.update);
