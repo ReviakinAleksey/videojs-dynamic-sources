@@ -148,7 +148,7 @@
         return menu;
     };
 
-    var dynamicQualityMenu = function (options) {
+    var dynamicSources = function (options) {
         //Plugin initialization
         var currentPlayer = this;
 
@@ -264,6 +264,6 @@
         currentPlayer.controlBar.addChild(sourceListMenu);
     };
 
-    videojs.plugin('dynamicQualityMenu', dynamicQualityMenu);
+    videojs.plugin('dynamicSources', dynamicSources);
 
 }());
