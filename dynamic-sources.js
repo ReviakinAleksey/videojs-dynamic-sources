@@ -195,6 +195,14 @@
             this.removeClass('vjs-has-sources');
         }
 
+        if (this.autoQualityButton != null) {
+            if (this.menuItems_.length < 2) {
+                this.autoQualityButton.hide();
+            } else {
+                this.autoQualityButton.show();
+            }
+        }
+
         return menu;
     };
 
@@ -208,6 +216,9 @@
             menuButton.autoQualityButton = this;
             options.disabled = true;
             ButtonSwitch.call(this, player, options);
+            if (menuButton.menuItems_.length < 2) {
+                this.hide();
+            }
         }
     });
 
@@ -339,8 +350,8 @@
 
         if (options.qualityDetection === true) {
 
-            var BANDWIDTH_DETECTION_TIME =  options.bandwidthDetectionTime ||  3000;
-            var DETECTION_START_DELAY =  options.bandwidthDetectionStartDelay ||  BANDWIDTH_DETECTION_TIME/2;
+            var BANDWIDTH_DETECTION_TIME = options.bandwidthDetectionTime || 3000;
+            var DETECTION_START_DELAY = options.bandwidthDetectionStartDelay || BANDWIDTH_DETECTION_TIME / 2;
 
             var autoQualityButton = new AutoQualityButton(currentPlayer, sourceListMenu, {});
             currentPlayer.controlBar.addChild(autoQualityButton);
@@ -355,7 +366,6 @@
                 }
                 return played;
             };
-
 
             var currentDetectionTime = BANDWIDTH_DETECTION_TIME;
             var measuringDisabled = true;
