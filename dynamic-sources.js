@@ -22,6 +22,27 @@
         }
     };
 
+    var toggleFunctions = function (component) {
+        return component.extend({
+            toggleState: function (state) {
+                this.options_.disabled = state;
+                if (!state) {
+                    this.removeClass('enabled');
+                    this.addClass('disabled');
+                } else {
+                    this.addClass('enabled');
+                    this.removeClass('disabled');
+                }
+            },
+            init: function (player, options) {
+                options = options || {};
+                options.disabled = !!options.disabled;
+                component.call(this, player, options);
+                this.toggleState(!options.disabled);
+            }
+        });
+    };
+
     var SourceListItem = vjs.MenuItem.extend({
         contentElType: 'button',
         /** @constructor */
@@ -72,20 +93,37 @@
         }
         this.parentMenu_.currentSourceItem_ = this;
         this.parentMenu_.updateLabel(this.options_.label);
+        currentPlayer.trigger('quality_changed');
     };
 
     SourceListItem.prototype.onClick = function () {
         this.parentMenu_.choiceStorage.set(this.options_.label);
+        this.parentMenu_.disableAutoQuality();
         this.selectSource();
         vjs.MenuItem.prototype.onClick.call(this);
     };
 
-    var SourceListMenu = vjs.MenuButton.extend({
+    var SwitchMenu = toggleFunctions(vjs.MenuButton);
+
+    var SourceListMenu = SwitchMenu.extend({
         className: 'vjs-sources-menu',
         /** @constructor */
         init: function (player, choiceStorage, options) {
             this.choiceStorage = choiceStorage;
-            vjs.MenuButton.call(this, player, options);
+            SwitchMenu.call(this, player, options);
+            var that = this;
+
+            player.on('quality-up', function () {
+                if (that.currentSourceItem_ !== null && that.currentSourceItem_.higher != null) {
+                    that.currentSourceItem_.higher.selectSource();
+                }
+            });
+
+            player.on('quality-down', function () {
+                if (that.currentSourceItem_ !== null && that.currentSourceItem_.lower != null) {
+                    that.currentSourceItem_.lower.selectSource();
+                }
+            });
         }
     });
 
@@ -98,7 +136,7 @@
     };
 
     SourceListMenu.prototype.createEl = function () {
-        var el = vjs.MenuButton.prototype.createEl.call(this);
+        var el = SwitchMenu.prototype.createEl.call(this);
 
         this.currentSourceValue_ = vjs.createEl('div', {
             className: 'vjs-current-source-value',
@@ -110,8 +148,18 @@
         return el;
     };
 
+    SourceListMenu.prototype.disableAutoQuality = function () {
+        if (!this.options_.disabled) {
+            this.toggleState(true);
+            if (this.autoQualityButton != null) {
+                this.autoQualityButton.toggleState(false);
+            }
+        }
+    };
+
     SourceListMenu.prototype.onClick = function () {
-        vjs.MenuButton.prototype.onClick.call(this);
+        this.disableAutoQuality();
+        SwitchMenu.prototype.onClick.call(this);
         if (this.currentSourceItem_ !== null) {
             this.choiceStorage.set(this.currentSourceItem_.next.options_.label);
             this.currentSourceItem_.next.selectSource();
@@ -135,6 +183,8 @@
                 this.menuItems_.push(sourceListItem);
                 if (i !== 0) {
                     this.menuItems_[i - 1].next = sourceListItem;
+                    sourceListItem.higher = this.menuItems_[i - 1];
+                    this.menuItems_[i - 1].lower = sourceListItem;
                 }
                 menu.addItem(sourceListItem);
             }
@@ -146,6 +196,30 @@
         }
 
         return menu;
+    };
+
+    var ButtonSwitch = toggleFunctions(vjs.Button);
+
+    var AutoQualityButton = ButtonSwitch.extend({
+        buttonText: 'Auto',
+        /** @constructor */
+        init: function (player, menuButton, options) {
+            options.menuButton = menuButton;
+            menuButton.autoQualityButton = this;
+            options.disabled = true;
+            ButtonSwitch.call(this, player, options);
+        }
+    });
+
+    AutoQualityButton.prototype.onClick = function () {
+        this.options_.disabled = !this.options_.disabled;
+        this.options_.menuButton.toggleState(!this.options_.disabled);
+        this.toggleState(this.options_.disabled);
+        ButtonSwitch.prototype.onClick.call(this);
+    };
+
+    AutoQualityButton.prototype.buildCSSClass = function () {
+        return ButtonSwitch.prototype.buildCSSClass.call(this) + 'vjs-auto-quality-button';
     };
 
     var dynamicSources = function (options) {
@@ -262,6 +336,93 @@
         sourceListMenu.on(currentPlayer, 'dynamicSourcesUpdated', sourceListMenu.update);
 
         currentPlayer.controlBar.addChild(sourceListMenu);
+
+        if (options.qualityDetection === true) {
+
+            var BANDWIDTH_DETECTION_TIME =  options.bandwidthDetectionTime ||  3000;
+            var DETECTION_START_DELAY =  options.bandwidthDetectionStartDelay ||  BANDWIDTH_DETECTION_TIME/2;
+
+            var autoQualityButton = new AutoQualityButton(currentPlayer, sourceListMenu, {});
+            currentPlayer.controlBar.addChild(autoQualityButton);
+
+            var progressData = [];
+            var firstTime = null;
+
+            currentPlayer.played = function () {
+                var played = currentPlayer.tech.el_.played;
+                if (!played || !played.length) {
+                    played = vjs.createTimeRange(0, 0);
+                }
+                return played;
+            };
+
+
+            var currentDetectionTime = BANDWIDTH_DETECTION_TIME;
+            var measuringDisabled = true;
+            var timer = null;
+            var startDetection = function () {
+                timer = setTimeout(function () {
+                    measuringDisabled = false
+                }, DETECTION_START_DELAY);
+            };
+            var pauseDetection = function () {
+                clearTimeout(timer);
+                measuringDisabled = true;
+                progressData = [];
+            };
+
+            var timingCalculate = function () {
+                var currentTime = new Date().getTime();
+                if (firstTime == null) {
+                    firstTime = currentTime;
+                }
+                if (measuringDisabled === true) {
+                    return;
+                }
+                var i;
+                var bufferedObject = currentPlayer.buffered();
+                var currentBuffered = 0;
+                for(i = 0; i < bufferedObject.length; i++) {
+                    currentBuffered += bufferedObject.end(i) - bufferedObject.start(i);
+                }
+                var playedObject = currentPlayer.played();
+                var currentPlayed = 0;
+                for(i = 0; i < playedObject.length; i++) {
+                    currentPlayed += playedObject.end(i) - playedObject.start(i);
+                }
+                var statData = {time: currentTime, elapsed: currentTime - firstTime, buffered: currentBuffered, played: currentPlayed};
+                progressData.push(statData);
+                currentPlayer.trigger({'type': 'progressStat', data: statData});
+                var arrayShifted = false;
+                while((currentTime - progressData[0].time) > currentDetectionTime) {
+                    arrayShifted = true;
+                    progressData.shift();
+                }
+                if (autoQualityButton.options().disabled !== false && arrayShifted) {
+                    var time = (currentTime - progressData[0].time);
+                    var playedPercent = 1000 * (currentPlayed - progressData[0].played) / time;
+                    var bufferedPercent = 1000 * (currentBuffered - progressData[0].buffered) / time;
+                    if (playedPercent < 0.98) {
+                        measuringDisabled = true;
+                        currentPlayer.trigger('quality-down');
+                        if (currentDetectionTime < 2 * BANDWIDTH_DETECTION_TIME) {
+                            currentDetectionTime *= 1.3;
+                        }
+                    } else if (bufferedPercent > 2.7) {
+                        if (currentDetectionTime > BANDWIDTH_DETECTION_TIME) {
+                            currentDetectionTime *= 0.7;
+                        }
+                        measuringDisabled = true;
+                        currentPlayer.trigger('quality-up');
+                    }
+                }
+            };
+            currentPlayer.on('loadedmetadata', startDetection);
+            currentPlayer.on('quality_changed', pauseDetection);
+            currentPlayer.on('seeked', startDetection);
+            currentPlayer.on('seeking', pauseDetection);
+            currentPlayer.on('progress', timingCalculate);
+        }
     };
 
     videojs.plugin('dynamicSources', dynamicSources);
