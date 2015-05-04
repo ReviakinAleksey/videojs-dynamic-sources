@@ -225,6 +225,16 @@
     AutoQualityButton.prototype.onClick = function () {
         this.options_.disabled = !this.options_.disabled;
         this.options_.menuButton.toggleState(!this.options_.disabled);
+        var currentSourceItem = this.options_.menuButton.currentSourceItem_;
+        if (currentSourceItem){
+           var highest = currentSourceItem;
+            while(highest.higher != null ){
+                highest = highest.higher;
+            }
+            if (highest != currentSourceItem){
+                highest.selectSource();
+            }
+        }
         this.toggleState(this.options_.disabled);
         ButtonSwitch.prototype.onClick.call(this);
     };
