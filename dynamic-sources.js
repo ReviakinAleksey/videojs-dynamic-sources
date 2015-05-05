@@ -3,6 +3,7 @@
 
     var videojs = window.videojs;
     var vjs = window.vjs;
+    var console = window.console;
 
     var SUPPORTED_STORAGE_TYPES = ['sessionStorage', 'localStorage'];
 
@@ -14,12 +15,16 @@
         }
     };
 
-    var nopStorage = {
-        get: function () {
-            return null;
-        },
-        set: function () {
-        }
+    var nopStorage = function (initialValue) {
+        var value = initialValue;
+        return {
+            get: function () {
+                return value;
+            },
+            set: function (newValue) {
+                value = newValue;
+            }
+        };
     };
 
     var toggleFunctions = function (component) {
@@ -74,7 +79,6 @@
                 if (item !== this) {
                     item.selected(false);
                 }
-
             }
             this.selected(true);
             var curTime = currentPlayer.currentTime();
@@ -200,6 +204,7 @@
                 this.autoQualityButton.hide();
             } else {
                 this.autoQualityButton.show();
+                this.autoQualityButton.switchToHighestQuality();
             }
         }
 
@@ -211,13 +216,18 @@
     var AutoQualityButton = ButtonSwitch.extend({
         buttonText: 'Auto',
         /** @constructor */
-        init: function (player, menuButton, options) {
+        init: function (player, menuButton, qualityDetectionStorage, options) {
             options.menuButton = menuButton;
             menuButton.autoQualityButton = this;
-            options.disabled = true;
+            this.qualityDetectionStorage = qualityDetectionStorage;
+            options.disabled = !this.qualityDetectionStorage.get();
             ButtonSwitch.call(this, player, options);
             if (menuButton.menuItems_.length < 2) {
                 this.hide();
+            } else {
+                if (!options.disabled) {
+                    this.switchToHighestQuality();
+                }
             }
         }
     });
@@ -225,47 +235,58 @@
     AutoQualityButton.prototype.onClick = function () {
         this.options_.disabled = !this.options_.disabled;
         this.options_.menuButton.toggleState(!this.options_.disabled);
-        var currentSourceItem = this.options_.menuButton.currentSourceItem_;
-        if (currentSourceItem){
-           var highest = currentSourceItem;
-            while(highest.higher != null ){
-                highest = highest.higher;
-            }
-            if (highest != currentSourceItem){
-                highest.selectSource();
+        this.switchToHighestQuality();
+        this.toggleState(this.options_.disabled);
+        this.qualityDetectionStorage.set(!this.options_.disabled);
+        ButtonSwitch.prototype.onClick.call(this);
+    };
+
+    AutoQualityButton.prototype.switchToHighestQuality = function () {
+        if (!this.options_.disabled) {
+            var currentSourceItem = this.options_.menuButton.currentSourceItem_;
+            if (currentSourceItem) {
+                var highest = currentSourceItem;
+                while(highest.higher != null) {
+                    highest = highest.higher;
+                }
+                if (highest !== currentSourceItem) {
+                    highest.selectSource();
+                }
             }
         }
-        this.toggleState(this.options_.disabled);
-        ButtonSwitch.prototype.onClick.call(this);
     };
 
     AutoQualityButton.prototype.buildCSSClass = function () {
         return ButtonSwitch.prototype.buildCSSClass.call(this) + 'vjs-auto-quality-button';
     };
 
+    var createStorage = function (storageType, key, defaultValue) {
+        var storage = nopStorage(defaultValue);
+
+        if (storageType != null) {
+            if (typeof  storageType === 'string') {
+                if (SUPPORTED_STORAGE_TYPES.indexOf(storageType !== -1) && feautureSupported(storageType)) {
+                    storage.set = function (quality) {
+                        window[storageType][key] = quality;
+                    };
+                    storage.get = function () {
+                        return window[storageType][key];
+                    };
+                } else {
+                    console.warn('Unsupported storage type: ', storageType);
+                }
+            } else {
+                storage = storageType;
+            }
+        }
+        return storage;
+    };
+
     var dynamicSources = function (options) {
         //Plugin initialization
         var currentPlayer = this;
 
-        var choiceStorage = nopStorage;
-        var storageKey = options.preferedQualityStorageKey || 'vjs.dynamic.sources.selected.quality';
-
-        if (options.preferedQualityStorage != null) {
-            if (typeof  options.preferedQualityStorage === 'string') {
-                if (SUPPORTED_STORAGE_TYPES.indexOf(options.preferedQualityStorage !== -1) && feautureSupported(options.preferedQualityStorage)) {
-                    choiceStorage.set = function (quality) {
-                        window[options.preferedQualityStorage][storageKey] = quality;
-                    };
-                    choiceStorage.get = function () {
-                        return window[options.preferedQualityStorage][storageKey];
-                    };
-                } else {
-                    console.warn('Unsupported storage type: ', options.preferedQualityStorage);
-                }
-            } else {
-                choiceStorage = options.preferedQualityStorage;
-            }
-        }
+        var choiceStorage = createStorage(options.preferedQualityStorage, options.preferedQualityStorageKey || 'vjs.dynamic.sources.selected.quality');
 
         /*
          player.setSources([
@@ -360,10 +381,12 @@
 
         if (options.qualityDetection === true) {
 
+            var qualityDetectionStorage = createStorage(options.qualityDetectionStateStorage, options.qualityDetectionStateKey || 'vjs.dynamic.quality.detection.enabled', false);
+
             var BANDWIDTH_DETECTION_TIME = options.bandwidthDetectionTime || 3000;
             var DETECTION_START_DELAY = options.bandwidthDetectionStartDelay || BANDWIDTH_DETECTION_TIME / 2;
 
-            var autoQualityButton = new AutoQualityButton(currentPlayer, sourceListMenu, {});
+            var autoQualityButton = new AutoQualityButton(currentPlayer, sourceListMenu, qualityDetectionStorage, {});
             currentPlayer.controlBar.addChild(autoQualityButton);
 
             var progressData = [];
@@ -382,7 +405,7 @@
             var timer = null;
             var startDetection = function () {
                 timer = setTimeout(function () {
-                    measuringDisabled = false
+                    measuringDisabled = false;
                 }, DETECTION_START_DELAY);
             };
             var pauseDetection = function () {
