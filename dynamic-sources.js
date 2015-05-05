@@ -30,7 +30,7 @@
     var toggleFunctions = function (component) {
         return component.extend({
             toggleState: function (state) {
-                this.options_.disabled = state;
+                this.options_.disabled = !state;
                 if (!state) {
                     this.removeClass('enabled');
                     this.addClass('disabled');
@@ -153,7 +153,7 @@
     };
 
     SourceListMenu.prototype.disableAutoQuality = function () {
-        if (!this.options_.disabled) {
+        if (this.options_.disabled) {
             this.toggleState(true);
             if (this.autoQualityButton != null) {
                 this.autoQualityButton.toggleState(false);
@@ -234,9 +234,9 @@
 
     AutoQualityButton.prototype.onClick = function () {
         this.options_.disabled = !this.options_.disabled;
-        this.options_.menuButton.toggleState(!this.options_.disabled);
+        this.options_.menuButton.toggleState(this.options_.disabled);
         this.switchToHighestQuality();
-        this.toggleState(this.options_.disabled);
+        this.toggleState(!this.options_.disabled);
         this.qualityDetectionStorage.set(!this.options_.disabled);
         ButtonSwitch.prototype.onClick.call(this);
     };
@@ -253,6 +253,7 @@
                     highest.selectSource();
                 }
             }
+            this.options_.menuButton.toggleState(false);
         }
     };
 
@@ -441,7 +442,7 @@
                     arrayShifted = true;
                     progressData.shift();
                 }
-                if (autoQualityButton.options().disabled !== false && arrayShifted) {
+                if (autoQualityButton.options().disabled !== true && arrayShifted) {
                     var time = (currentTime - progressData[0].time);
                     var playedPercent = 1000 * (currentPlayed - progressData[0].played) / time;
                     var bufferedPercent = 1000 * (currentBuffered - progressData[0].buffered) / time;
