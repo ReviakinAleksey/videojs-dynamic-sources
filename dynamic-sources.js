@@ -27,6 +27,32 @@
         };
     };
 
+    var createStorage = function (storageType, key, defaultValue) {
+        var storage = nopStorage(defaultValue);
+
+        if (storageType != null) {
+            if (typeof  storageType === 'string') {
+                if (SUPPORTED_STORAGE_TYPES.indexOf(storageType !== -1) && feautureSupported(storageType)) {
+                    storage.set = function (quality) {
+                        window[storageType][key] = quality;
+                    };
+                    storage.get = function () {
+                        var value = window[storageType][key];
+                        if (value === "true" || value === "false"){
+                            return value === "true";
+                        }
+                        return value;
+                    };
+                } else {
+                    console.warn('Unsupported storage type: ', storageType);
+                }
+            } else {
+                storage = storageType;
+            }
+        }
+        return storage;
+    };
+
     var toggleFunctions = function (component) {
         return component.extend({
             toggleState: function (state) {
@@ -120,12 +146,14 @@
             player.on('quality-up', function () {
                 if (that.currentSourceItem_ !== null && that.currentSourceItem_.higher != null) {
                     that.currentSourceItem_.higher.selectSource();
+                    that.autoQualityButton.lastDetectedQualityStorage.set(that.currentSourceItem_.options().sourceName);
                 }
             });
 
             player.on('quality-down', function () {
                 if (that.currentSourceItem_ !== null && that.currentSourceItem_.lower != null) {
                     that.currentSourceItem_.lower.selectSource();
+                    that.autoQualityButton.lastDetectedQualityStorage.set(that.currentSourceItem_.options().sourceName);
                 }
             });
         }
@@ -157,6 +185,11 @@
             this.toggleState(true);
             if (this.autoQualityButton != null) {
                 this.autoQualityButton.toggleState(false);
+                this.autoQualityButton.clearDetectedQuality();
+            }
+        } else {
+            if (this.autoQualityButton != null) {
+                this.autoQualityButton.clearDetectedQuality();
             }
         }
     };
@@ -216,11 +249,12 @@
     var AutoQualityButton = ButtonSwitch.extend({
         buttonText: 'Auto',
         /** @constructor */
-        init: function (player, menuButton, qualityDetectionStorage, options) {
+        init: function (player, menuButton, qualityDetectionStorage, lastDetectedQualityStorage, options) {
             options.menuButton = menuButton;
             menuButton.autoQualityButton = this;
-            this.qualityDetectionStorage = qualityDetectionStorage;
-            options.disabled = !this.qualityDetectionStorage.get();
+            this.lastDetectedQualityStorage = lastDetectedQualityStorage;
+            this.qualityDetectionEnabled = qualityDetectionStorage;
+            options.disabled = !this.qualityDetectionEnabled.get();
             ButtonSwitch.call(this, player, options);
             if (menuButton.menuItems_.length < 2) {
                 this.hide();
@@ -237,51 +271,45 @@
         this.options_.menuButton.toggleState(this.options_.disabled);
         this.switchToHighestQuality();
         this.toggleState(!this.options_.disabled);
-        this.qualityDetectionStorage.set(!this.options_.disabled);
         ButtonSwitch.prototype.onClick.call(this);
     };
 
     AutoQualityButton.prototype.switchToHighestQuality = function () {
         if (!this.options_.disabled) {
-            var currentSourceItem = this.options_.menuButton.currentSourceItem_;
-            if (currentSourceItem) {
-                var highest = currentSourceItem;
-                while(highest.higher != null) {
-                    highest = highest.higher;
+            //this.options_.menuButton.menuItems_[0].options().sourceName
+            var highest = null;
+            var lastDetectedQuality = this.lastDetectedQualityStorage.get();
+            for(var i = 0; i < this.options_.menuButton.menuItems_.length; i++) {
+                var menuItem = this.options_.menuButton.menuItems_[i];
+                if (highest == null) {
+                    highest = menuItem;
                 }
-                if (highest !== currentSourceItem) {
-                    highest.selectSource();
+                if (menuItem.options().sourceName === lastDetectedQuality) {
+                    highest = menuItem;
+                    break;
                 }
             }
-            this.options_.menuButton.toggleState(false);
+            if (highest != null) {
+                highest.selectSource();
+                this.options_.menuButton.toggleState(false);
+            }
         }
+    };
+
+    AutoQualityButton.prototype.clearDetectedQuality = function () {
+        this.lastDetectedQualityStorage.set(null);
+    };
+
+    AutoQualityButton.prototype.toggleState = function (enabled) {
+        this.qualityDetectionEnabled.set(enabled);
+        return ButtonSwitch.prototype.toggleState.call(this, enabled);
     };
 
     AutoQualityButton.prototype.buildCSSClass = function () {
         return ButtonSwitch.prototype.buildCSSClass.call(this) + 'vjs-auto-quality-button';
     };
 
-    var createStorage = function (storageType, key, defaultValue) {
-        var storage = nopStorage(defaultValue);
 
-        if (storageType != null) {
-            if (typeof  storageType === 'string') {
-                if (SUPPORTED_STORAGE_TYPES.indexOf(storageType !== -1) && feautureSupported(storageType)) {
-                    storage.set = function (quality) {
-                        window[storageType][key] = quality;
-                    };
-                    storage.get = function () {
-                        return window[storageType][key];
-                    };
-                } else {
-                    console.warn('Unsupported storage type: ', storageType);
-                }
-            } else {
-                storage = storageType;
-            }
-        }
-        return storage;
-    };
 
     var dynamicSources = function (options) {
         //Plugin initialization
@@ -383,11 +411,12 @@
         if (options.qualityDetection === true) {
 
             var qualityDetectionStorage = createStorage(options.qualityDetectionStateStorage, options.qualityDetectionStateKey || 'vjs.dynamic.quality.detection.enabled', false);
+            var lastDetectedQualityStorage = createStorage(options.lastDetectedQualityStorage || options.qualityDetectionStateStorage, options.lastDetectedQualityKey || 'vjs.dynamic.quality.last.detected', false);
 
             var BANDWIDTH_DETECTION_TIME = options.bandwidthDetectionTime || 3000;
             var DETECTION_START_DELAY = options.bandwidthDetectionStartDelay || BANDWIDTH_DETECTION_TIME / 2;
 
-            var autoQualityButton = new AutoQualityButton(currentPlayer, sourceListMenu, qualityDetectionStorage, {});
+            var autoQualityButton = new AutoQualityButton(currentPlayer, sourceListMenu, qualityDetectionStorage, lastDetectedQualityStorage, {});
             currentPlayer.controlBar.addChild(autoQualityButton);
 
             var progressData = [];
