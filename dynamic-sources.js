@@ -118,7 +118,7 @@
                 }
             });
         }
-        if (!currentPlayer.src()) {
+        if (!currentPlayer.hasSource()) {
             currentPlayer.src(newSource);
         }
         this.parentMenu_.currentSourceItem_ = this;
@@ -317,25 +317,42 @@
 
         var choiceStorage = createStorage(options.preferedQualityStorage, options.preferedQualityStorageKey || 'vjs.dynamic.sources.selected.quality');
 
+        var hasSource = false;
+
+        currentPlayer.hasSource  = function(){
+            return hasSource;
+        };
+
+
+        var playerSrcFunction = currentPlayer.src;
+
+        currentPlayer.src = function(src){
+            if (src != null){
+                hasSource = true;
+            }
+            playerSrcFunction.call(currentPlayer, src);
+        };
+
+
         /*
          player.setSources([
          {
-             'HD': [
-                 {type: "video/mp4", src: "http://www.example.com/path/to/hd_video.mp4"},
-                 {type: "video/webm", src: "http://www.example.com/path/to/hd_video.webm"},
-                 {type: "video/ogg", src: "http://www.example.com/path/to/hd_video.ogv"}
-                ],
-              selected: true
-          },
-         {
-             'SD': [
-                 {type: "video/mp4", src: "http://www.example.com/path/to/sd_video.mp4"},
-                 {type: "video/webm", src: "http://www.example.com/path/to/sd_video.webm"},
-                 {type: "video/ogg", src: "http://www.example.com/path/to/sd_video.ogv"}
-             ]
+         'HD': [
+         {type: "video/mp4", src: "http://www.example.com/path/to/hd_video.mp4"},
+         {type: "video/webm", src: "http://www.example.com/path/to/hd_video.webm"},
+         {type: "video/ogg", src: "http://www.example.com/path/to/hd_video.ogv"}
+         ],
+         selected: true
          },
          {
-            'REGULAR' : 'http://www.example.com/path/to/fallback_video.ogv'
+         'SD': [
+         {type: "video/mp4", src: "http://www.example.com/path/to/sd_video.mp4"},
+         {type: "video/webm", src: "http://www.example.com/path/to/sd_video.webm"},
+         {type: "video/ogg", src: "http://www.example.com/path/to/sd_video.ogv"}
+         ]
+         },
+         {
+         'REGULAR' : 'http://www.example.com/path/to/fallback_video.ogv'
          }
          ]);
 
@@ -343,6 +360,7 @@
         currentPlayer.setSources = function (src) {
             var i, sourceObject, sourceLabel, sourceDescriptor;
             var internalSources = [];
+            hasSource = false;
             if (Array.isArray(src)) {
                 var preferedSourceName = choiceStorage.get();
                 var selectedSourceFound = false;
@@ -389,7 +407,7 @@
         if (options.sourceProvider != null) {
             var playFunction = currentPlayer.play;
             currentPlayer.play = function () {
-                if (!currentPlayer.src()) {
+                if (!currentPlayer.hasSource()) {
                     options.sourceProvider(function (src) {
                         currentPlayer.setSources(src);
                         playFunction.call(currentPlayer);
